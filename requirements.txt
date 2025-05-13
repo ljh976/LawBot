@@ -1,0 +1,7 @@
+streamlit
+openai
+faiss-cpu
+numpy
+python-dotenv
+pyrebase4
+requests
