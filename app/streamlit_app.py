@@ -11,7 +11,7 @@ import faiss
 import numpy as np
 
 # Firebase Admin Init
-cred = credentials.Certificate(".streamlit/firebase_key.json")
+cred = credentials.Certificate(dict(st.secrets["firebase_admin"]))
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
