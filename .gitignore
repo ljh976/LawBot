@@ -11,9 +11,6 @@ __pycache__/
 # Streamlit secrets
 .streamlit/secrets.toml
 
-# FAISS artifacts (optional, can be regenerated)
-*.faiss
-
 # OS-specific
 .DS_Store
 Thumbs.db
