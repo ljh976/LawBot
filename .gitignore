@@ -21,3 +21,5 @@ Thumbs.db
 # VSCode or PyCharm settings (optional)
 .vscode/
 .idea/
+
+.streamlit/firebase_key.json

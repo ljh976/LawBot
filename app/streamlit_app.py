@@ -1,38 +1,47 @@
 import os
 import json
-import faiss
-import numpy as np
+import requests
 import streamlit as st
-import pyrebase
+import firebase_admin
 from openai import OpenAI
 from dotenv import load_dotenv
+from firebase_admin import auth, credentials, initialize_app
 from pathlib import Path
+import faiss
+import numpy as np
 
-# Load .env (local)
+# Firebase Admin Init
+cred = credentials.Certificate(".streamlit/firebase_key.json")
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
+
+# Load env
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Load secrets (for deployment)
+# Get API Keys
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-
-FIREBASE_CONFIG = {
-    "apiKey": st.secrets.get("FIREBASE_API_KEY", ""),
-    "authDomain": st.secrets.get("FIREBASE_AUTH_DOMAIN", ""),
-    "projectId": st.secrets.get("FIREBASE_PROJECT_ID", ""),
-    "storageBucket": st.secrets.get("FIREBASE_STORAGE_BUCKET", ""),
-    "messagingSenderId": st.secrets.get("FIREBASE_MESSAGING_SENDER_ID", ""),
-    "appId": st.secrets.get("FIREBASE_APP_ID", ""),
-    "databaseURL": ""
-}
-
-# Firebase init
-firebase = pyrebase.initialize_app(FIREBASE_CONFIG)
-auth = firebase.auth()
-
-# OpenAI init
+FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY", os.getenv("FIREBASE_API_KEY"))
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Load FAISS index and metadata
+# Firebase REST Signup/Login
+def signup(email, password):
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
+    res = requests.post(url, json={"email": email, "password": password, "returnSecureToken": True})
+    if res.status_code == 200:
+        return res.json()
+    else:
+        raise Exception(res.json()["error"]["message"])
+
+def login(email, password):
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
+    res = requests.post(url, json={"email": email, "password": password, "returnSecureToken": True})
+    if res.status_code == 200:
+        return res.json()
+    else:
+        raise Exception(res.json()["error"]["message"])
+
+# FAISS + RAG
 base_dir = Path(__file__).resolve().parent.parent
 data_dir = base_dir / "data"
 index_path = data_dir / "index.faiss"
@@ -42,7 +51,6 @@ index = faiss.read_index(str(index_path))
 with open(meta_path, "r", encoding="utf-8") as f:
     documents = json.load(f)
 
-# Embedding/search
 def get_embedding(text, model="text-embedding-ada-002"):
     response = client.embeddings.create(input=[text], model=model)
     return np.array(response.data[0].embedding, dtype=np.float32)
@@ -79,40 +87,32 @@ def get_answer(query):
 st.set_page_config(page_title="Texas LawBot", layout="wide")
 st.title("📘 Texas LawBot")
 
-# Sidebar auth
-st.sidebar.title("Account")
+# Auth UI
 if "user" not in st.session_state:
-    auth_mode = st.sidebar.radio("Mode", ["Login", "Sign Up"])
+    mode = st.sidebar.radio("Choose", ["Login", "Sign Up"])
     email = st.sidebar.text_input("Email")
     password = st.sidebar.text_input("Password", type="password")
 
-    if auth_mode == "Login":
-        if st.sidebar.button("Log In"):
-            try:
-                user = auth.sign_in_with_email_and_password(email, password)
-                st.session_state["user"] = user
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error("Login failed")
-                st.sidebar.code(str(e))
-    else:
-        if st.sidebar.button("Create Account"):
-            try:
-                auth.create_user_with_email_and_password(email, password)
-                st.sidebar.success("Account created. Please log in.")
-            except Exception as e:
-                st.sidebar.error("Sign Up failed")
-                st.sidebar.code(str(e))
+    if st.sidebar.button(mode):
+        try:
+            if mode == "Sign Up":
+                user = signup(email, password)
+            else:
+                user = login(email, password)
+            st.session_state["user"] = user
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(str(e))
     st.stop()
-else:
-    st.sidebar.success(f"Logged in as: {st.session_state['user']['email']}")
-    if st.sidebar.button("Log out"):
-        del st.session_state["user"]
-        st.rerun()
 
-# Main app
+# Logged in
+st.sidebar.success(f"Logged in as: {st.session_state['user']['email']}")
+if st.sidebar.button("Log out"):
+    del st.session_state["user"]
+    st.rerun()
+
+# App UI
 st.caption("Ask a question based on Texas Family Law")
-
 query = st.text_area("Your legal question", height=120)
 
 if st.button("Submit") and query.strip():
