@@ -3,17 +3,12 @@ import json
 import requests
 import streamlit as st
 import firebase_admin
-from openai import OpenAI
+from firebase_admin import auth, credentials
 from dotenv import load_dotenv
-from firebase_admin import auth, credentials, initialize_app
 from pathlib import Path
 import faiss
 import numpy as np
-
-# Firebase Admin Init
-cred = credentials.Certificate(dict(st.secrets["firebase_admin"]))
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred)
+from openai import OpenAI
 
 # Load env
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -23,6 +18,11 @@ load_dotenv(dotenv_path=env_path)
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY", os.getenv("FIREBASE_API_KEY"))
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Firebase Admin Init
+if not firebase_admin._apps:
+    cred = credentials.Certificate(dict(st.secrets["firebase_admin"]))
+    firebase_admin.initialize_app(cred)
 
 # Firebase REST Signup/Login
 def signup(email, password):
@@ -47,6 +47,10 @@ data_dir = base_dir / "data"
 index_path = data_dir / "index.faiss"
 meta_path = data_dir / "doc_meta.json"
 
+if not index_path.exists() or not meta_path.exists():
+    st.error("Missing FAISS index or metadata file.")
+    st.stop()
+
 index = faiss.read_index(str(index_path))
 with open(meta_path, "r", encoding="utf-8") as f:
     documents = json.load(f)
@@ -70,8 +74,7 @@ Documents:
 Question:
 {question}
 
-Only answer if the documents contain the answer.
-"""
+Only answer if the documents contain the answer."""
 
 def get_answer(query):
     docs = search_documents(query)
@@ -88,28 +91,35 @@ st.set_page_config(page_title="Texas LawBot", layout="wide")
 st.title("📘 Texas LawBot")
 
 # Auth UI
-if "user" not in st.session_state:
+if "user" in st.session_state and st.session_state["user"]:
+    st.sidebar.success(f"Logged in as: {st.session_state['user'].get('email', 'Unknown')}")
+    if st.sidebar.button("Log out"):
+        del st.session_state["user"]
+        st.rerun()
+else:
+    st.sidebar.warning("You are not logged in.")
+    st.stop()
+
+# Auth UI + Logged in UI
+if "user" in st.session_state and st.session_state["user"]:
+    st.sidebar.success(f"Logged in as: {st.session_state['user'].get('email', 'Unknown')}")
+    if st.sidebar.button("Log out"):
+        del st.session_state["user"]
+        st.rerun()
+else:
     mode = st.sidebar.radio("Choose", ["Login", "Sign Up"])
     email = st.sidebar.text_input("Email")
     password = st.sidebar.text_input("Password", type="password")
 
     if st.sidebar.button(mode):
         try:
-            if mode == "Sign Up":
-                user = signup(email, password)
-            else:
-                user = login(email, password)
+            user = signup(email, password) if mode == "Sign Up" else login(email, password)
             st.session_state["user"] = user
             st.rerun()
         except Exception as e:
             st.sidebar.error(str(e))
     st.stop()
 
-# Logged in
-st.sidebar.success(f"Logged in as: {st.session_state['user']['email']}")
-if st.sidebar.button("Log out"):
-    del st.session_state["user"]
-    st.rerun()
 
 # App UI
 st.caption("Ask a question based on Texas Family Law")

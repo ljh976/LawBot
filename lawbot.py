@@ -1,12 +1,17 @@
 import subprocess
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Resolve path to app/streamlit_app.py
-base_dir = Path(__file__).resolve().parent
-app_path = base_dir / "app" / "streamlit_app.py"
+env_path = Path(__file__) / ".env"
+load_dotenv(dotenv_path=env_path)
 
-# Run Streamlit app in headless mode
+env = os.environ.copy()
+env["PYTHONUNBUFFERED"] = "1"
+
+app_path = Path(__file__).resolve().parent / "app" / "lawbot_app.py"
+
 subprocess.run([
     "python", "-m", "streamlit", "run", str(app_path),
     "--server.headless", "true"
-], check=True)
+], check=True, env=env)

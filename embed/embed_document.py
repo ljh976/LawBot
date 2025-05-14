@@ -6,6 +6,7 @@ from tqdm import tqdm
 from openai import OpenAI
 from dotenv import load_dotenv
 from pathlib import Path
+import streamlit as st
 
 # Load .env from project root
 env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -13,7 +14,7 @@ load_dotenv(dotenv_path=env_path)
 
 # Initialize OpenAI client
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-client = OpenAI(api_key=OPENAI_API_KEY))
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Paths (absolute)
 base_dir = Path(__file__).resolve().parent.parent  # LawBot/
