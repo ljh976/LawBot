@@ -5,4 +5,5 @@ numpy
 python-dotenv
 pyrebase4
 requests
-pyrebase
+setuptools
+gcloud
