@@ -91,14 +91,23 @@ st.set_page_config(page_title="Texas LawBot", layout="wide")
 st.title("📘 Texas LawBot")
 
 # Auth UI
-if "user" in st.session_state and st.session_state["user"]:
-    st.sidebar.success(f"Logged in as: {st.session_state['user'].get('email', 'Unknown')}")
-    if st.sidebar.button("Log out"):
-        del st.session_state["user"]
-        st.rerun()
-else:
-    st.sidebar.warning("You are not logged in.")
+if "user" not in st.session_state:
+    mode = st.sidebar.radio("Choose", ["Login", "Sign Up"])
+    email = st.sidebar.text_input("Email")
+    password = st.sidebar.text_input("Password", type="password")
+
+    if st.sidebar.button(mode):
+        try:
+            if mode == "Sign Up":
+                user = signup(email, password)
+            else:
+                user = login(email, password)
+            st.session_state["user"] = user
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(str(e))
     st.stop()
+
 
 # Auth UI + Logged in UI
 if "user" in st.session_state and st.session_state["user"]:
