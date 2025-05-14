@@ -3,29 +3,46 @@ import json
 import faiss
 import numpy as np
 import streamlit as st
+import pyrebase
 from openai import OpenAI
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load .env
+# Load .env (local)
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Init OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Load secrets (for deployment)
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
-# Paths
+FIREBASE_CONFIG = {
+    "apiKey": st.secrets.get("FIREBASE_API_KEY", ""),
+    "authDomain": st.secrets.get("FIREBASE_AUTH_DOMAIN", ""),
+    "projectId": st.secrets.get("FIREBASE_PROJECT_ID", ""),
+    "storageBucket": st.secrets.get("FIREBASE_STORAGE_BUCKET", ""),
+    "messagingSenderId": st.secrets.get("FIREBASE_MESSAGING_SENDER_ID", ""),
+    "appId": st.secrets.get("FIREBASE_APP_ID", ""),
+    "databaseURL": ""
+}
+
+# Firebase init
+firebase = pyrebase.initialize_app(FIREBASE_CONFIG)
+auth = firebase.auth()
+
+# OpenAI init
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Load FAISS index and metadata
 base_dir = Path(__file__).resolve().parent.parent
 data_dir = base_dir / "data"
 index_path = data_dir / "index.faiss"
 meta_path = data_dir / "doc_meta.json"
 
-# Load FAISS index and metadata
 index = faiss.read_index(str(index_path))
 with open(meta_path, "r", encoding="utf-8") as f:
     documents = json.load(f)
 
-# Helper
+# Embedding/search
 def get_embedding(text, model="text-embedding-ada-002"):
     response = client.embeddings.create(input=[text], model=model)
     return np.array(response.data[0].embedding, dtype=np.float32)
@@ -58,9 +75,42 @@ def get_answer(query):
     )
     return response.choices[0].message.content.strip(), docs
 
-# UI
+# Streamlit UI
 st.set_page_config(page_title="Texas LawBot", layout="wide")
 st.title("📘 Texas LawBot")
+
+# Sidebar auth
+st.sidebar.title("Account")
+if "user" not in st.session_state:
+    auth_mode = st.sidebar.radio("Mode", ["Login", "Sign Up"])
+    email = st.sidebar.text_input("Email")
+    password = st.sidebar.text_input("Password", type="password")
+
+    if auth_mode == "Login":
+        if st.sidebar.button("Log In"):
+            try:
+                user = auth.sign_in_with_email_and_password(email, password)
+                st.session_state["user"] = user
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error("Login failed")
+                st.sidebar.code(str(e))
+    else:
+        if st.sidebar.button("Create Account"):
+            try:
+                auth.create_user_with_email_and_password(email, password)
+                st.sidebar.success("Account created. Please log in.")
+            except Exception as e:
+                st.sidebar.error("Sign Up failed")
+                st.sidebar.code(str(e))
+    st.stop()
+else:
+    st.sidebar.success(f"Logged in as: {st.session_state['user']['email']}")
+    if st.sidebar.button("Log out"):
+        del st.session_state["user"]
+        st.rerun()
+
+# Main app
 st.caption("Ask a question based on Texas Family Law")
 
 query = st.text_area("Your legal question", height=120)
