@@ -40,4 +40,4 @@ echo OPENAI_API_KEY=sk-... > .env
 python embed_all.py
 
 # 4. Launch the web UI
-python run_ui.py
+python lawbot.py
