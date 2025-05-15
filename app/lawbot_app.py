@@ -64,17 +64,42 @@ def search_documents(query, k=3):
     _, indices = index.search(query_vec, k)
     return [documents[i] for i in indices[0]]
 
-def build_prompt(docs, question):
-    context = "\n\n".join([f"[{d['id']}] {d['title']}\n{d['text']}" for d in docs])
-    return f"""You are a legal assistant. Answer based only on the documents below.
+def build_prompt(docs, question, max_total_tokens=3000):
+    """
+    Build a GPT prompt using selected documents and a user query.
+    GPT will be instructed to give a detailed answer and cite section numbers explicitly.
+    """
+    context = ""
+    total_tokens = 0
+
+    def estimate_tokens(text):
+        return int(len(text.split()) * 1.3)  # rough estimate
+
+    for d in docs:
+        chunk = f"[{d['id']}] {d['title']}\n{d['text']}\n\n"
+        chunk_tokens = estimate_tokens(chunk)
+
+        if total_tokens + chunk_tokens > max_total_tokens:
+            break
+
+        context += chunk
+        total_tokens += chunk_tokens
+
+    return f"""You are a legal assistant helping citizens in Texas.
+
+Answer the question using only the documents below. In your response:
+- Explicitly cite the section number and document ID (e.g., Section 153.002).
+- If multiple documents are relevant, mention all applicable sections.
+- Provide a thorough and detailed answer with clear legal reasoning.
+
+Do not use any external knowledge or assumptions. If the documents below do not contain the answer, say you cannot answer.
 
 Documents:
 {context}
 
 Question:
 {question}
-
-Only answer if the documents contain the answer."""
+"""
 
 def get_answer(query):
     docs = search_documents(query)
@@ -88,7 +113,7 @@ def get_answer(query):
 
 # Streamlit UI
 st.set_page_config(page_title="Texas LawBot", layout="wide")
-st.title("📘 Texas LawBot")
+st.title("📘 Texas Family Law Bot")
 
 # Auth UI
 if "user" not in st.session_state:
