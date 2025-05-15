@@ -1,3 +1,4 @@
+# (중략 - 기존 import 및 초기화 코드는 동일)
 import os
 import json
 import requests
@@ -65,23 +66,17 @@ def search_documents(query, k=3):
     return [documents[i] for i in indices[0]]
 
 def build_prompt(docs, question, max_total_tokens=3000):
-    """
-    Build a GPT prompt using selected documents and a user query.
-    GPT will be instructed to give a detailed answer and cite section numbers explicitly.
-    """
     context = ""
     total_tokens = 0
 
     def estimate_tokens(text):
-        return int(len(text.split()) * 1.3)  # rough estimate
+        return int(len(text.split()) * 1.3)
 
     for d in docs:
         chunk = f"[{d['id']}] {d['title']}\n{d['text']}\n\n"
         chunk_tokens = estimate_tokens(chunk)
-
         if total_tokens + chunk_tokens > max_total_tokens:
             break
-
         context += chunk
         total_tokens += chunk_tokens
 
@@ -123,30 +118,6 @@ if "user" not in st.session_state:
 
     if st.sidebar.button(mode):
         try:
-            if mode == "Sign Up":
-                user = signup(email, password)
-            else:
-                user = login(email, password)
-            st.session_state["user"] = user
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(str(e))
-    st.stop()
-
-
-# Auth UI + Logged in UI
-if "user" in st.session_state and st.session_state["user"]:
-    st.sidebar.success(f"Logged in as: {st.session_state['user'].get('email', 'Unknown')}")
-    if st.sidebar.button("Log out"):
-        del st.session_state["user"]
-        st.rerun()
-else:
-    mode = st.sidebar.radio("Choose", ["Login", "Sign Up"])
-    email = st.sidebar.text_input("Email")
-    password = st.sidebar.text_input("Password", type="password")
-
-    if st.sidebar.button(mode):
-        try:
             user = signup(email, password) if mode == "Sign Up" else login(email, password)
             st.session_state["user"] = user
             st.rerun()
@@ -154,6 +125,26 @@ else:
             st.sidebar.error(str(e))
     st.stop()
 
+# Authenticated UI
+st.sidebar.success(f"Logged in as: {st.session_state['user'].get('email', 'Unknown')}")
+if st.sidebar.button("Log out"):
+    del st.session_state["user"]
+    st.rerun()
+
+# === Add: enforce 3-question limit per user account ===
+limit_file = Path("query_limits.json")
+if limit_file.exists():
+    with open(limit_file, "r") as f:
+        query_limits = json.load(f)
+else:
+    query_limits = {}
+
+user_email = st.session_state["user"]["email"]
+query_count = query_limits.get(user_email, 0)
+
+if query_count >= 3:
+    st.warning("You’ve reached the maximum of 3 questions for this account.")
+    st.stop()
 
 # App UI
 st.caption("Ask a question based on Texas Family Law")
@@ -162,6 +153,12 @@ query = st.text_area("Your legal question", height=120)
 if st.button("Submit") and query.strip():
     with st.spinner("Thinking..."):
         answer, sources = get_answer(query)
+
+        # update count and save
+        query_limits[user_email] = query_count + 1
+        with open(limit_file, "w") as f:
+            json.dump(query_limits, f)
+
         st.markdown("### 💬 Answer")
         st.write(answer)
 
